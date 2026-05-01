@@ -1,0 +1,58 @@
+[project]
+name = "metalbench"
+version = "0.1.0"
+description = "Apple Metal-only kernel generation and evaluation harness for KernelBench-style tasks"
+authors = [
+    { name = "v0-3", email = "nonfatmatcha@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "numpy>=2.2.6",
+    "pandas>=2.3.3",
+    "pydantic>=2",
+    "rich>=15.0.0",
+    "torch>=2.11.0",
+    "typer>=0.25.1",
+]
+
+[project.scripts]
+metalbench = "metalbench.cli:app"
+
+[project.optional-dependencies]
+hf = [
+    "datasets>=4.8.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/metalbench"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.2",
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "mps: tests requiring Apple Metal MPS runtime",
+]
+
+[tool.ruff]
+extend-exclude = ["KernelBench"]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true

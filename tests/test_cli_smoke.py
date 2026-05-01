@@ -346,6 +346,56 @@ def test_cli_eval_run_passes_options_to_evaluate_run_directory(
     ]
 
 
+def test_cli_analyze_emits_json(tmp_path: Path) -> None:
+    ref_path = tmp_path / "reference.py"
+    kernel_path = tmp_path / "kernel.py"
+    results_path = tmp_path / "eval_results.json"
+    results_path.write_text(
+        json.dumps([eval_one_result(ref_path, kernel_path).model_dump(mode="json")]),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(app, ["analyze", str(results_path)])
+
+    assert result.exit_code == 0
+    analysis = json.loads(result.output)
+    assert analysis["run_dir"] == str(tmp_path)
+    assert analysis["total"] == 1
+    assert analysis["metal_fast_2"] == 1.0
+
+
+def test_cli_analyze_output_writes_json_and_prints_nothing(tmp_path: Path) -> None:
+    ref_path = tmp_path / "reference.py"
+    kernel_path = tmp_path / "kernel.py"
+    results_path = tmp_path / "eval_results.json"
+    output_path = tmp_path / "analysis.json"
+    results_path.write_text(
+        json.dumps([eval_one_result(ref_path, kernel_path).model_dump(mode="json")]),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        ["analyze", str(results_path), "--output", str(output_path)],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == ""
+    assert output_path.read_text(encoding="utf-8").endswith("\n")
+    analysis = json.loads(output_path.read_text(encoding="utf-8"))
+    assert analysis["total"] == 1
+
+
+def test_cli_analyze_invalid_input_exits_with_error(tmp_path: Path) -> None:
+    results_path = tmp_path / "eval_results.json"
+    results_path.write_text("{}", encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["analyze", str(results_path)])
+
+    assert result.exit_code == 1
+    assert "JSON list" in result.output
+
+
 def write_problem(kernelbench_dir: Path, source: str = "class Model:\n    pass\n") -> Path:
     level_dir = kernelbench_dir / "level1"
     level_dir.mkdir(parents=True)

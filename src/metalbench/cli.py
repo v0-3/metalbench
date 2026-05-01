@@ -6,7 +6,7 @@ from typing import Annotated, TypeVar
 import typer
 
 import metalbench.env as env_module
-from metalbench import eval_batch, eval_one, kernelbench_adapter, static_check
+from metalbench import analysis, eval_batch, eval_one, kernelbench_adapter, static_check
 from metalbench.types import KBProblem
 
 T = TypeVar("T")
@@ -254,6 +254,31 @@ def evaluate_run_directory(
         require_mps=require_mps,
     )
     result_json = json.dumps([result.model_dump(mode="json") for result in results], indent=2)
+    output.write_text(f"{result_json}\n", encoding="utf-8")
+
+
+@app.command("analyze")
+def analyze_eval_results(
+    eval_results_path: Path,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            help="Optional JSON output path.",
+        ),
+    ] = None,
+) -> None:
+    try:
+        result = analysis.analyze_eval_results(eval_results_path)
+    except (FileNotFoundError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
+
+    result_json = json.dumps(result.model_dump(mode="json"), indent=2)
+    if output is None:
+        typer.echo(result_json)
+        return
+
     output.write_text(f"{result_json}\n", encoding="utf-8")
 
 

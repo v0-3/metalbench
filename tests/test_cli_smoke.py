@@ -2,6 +2,7 @@ import json
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 import metalbench.env
@@ -25,7 +26,7 @@ def test_cli_env_exits_successfully_and_emits_json() -> None:
 
 
 def test_cli_env_require_mps_exits_with_error_when_mps_is_unavailable(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(metalbench.env, "is_mps_available", lambda: False)
 
@@ -34,6 +35,57 @@ def test_cli_env_require_mps_exits_with_error_when_mps_is_unavailable(
     assert result.exit_code == 1
     assert "MPS" in result.output
     assert "cuda" not in result.output.lower()
+
+
+def test_cli_check_valid_file_exits_successfully_and_emits_json(tmp_path: Path) -> None:
+    generated_path = tmp_path / "generated.py"
+    generated_path.write_text(
+        """
+import torch
+import torch.nn as nn
+
+_METAL_SRC = "kernel void noop() {}"
+_LIB = torch.mps.compile_shader(_METAL_SRC)
+
+
+class ModelNew(nn.Module):
+    def forward(self, x):
+        x = x.contiguous()
+        y = torch.empty_like(x)
+        return y
+""",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(app, ["check", str(generated_path)])
+
+    assert result.exit_code == 0
+    check_result = json.loads(result.output)
+    assert check_result["ok"] is True
+    assert check_result["errors"] == []
+    assert check_result["path"] == str(generated_path)
+
+
+def test_cli_check_invalid_file_exits_with_error_and_emits_json(tmp_path: Path) -> None:
+    generated_path = tmp_path / "generated.py"
+    generated_path.write_text(
+        """
+import torch
+import torch.nn as nn
+
+class ModelNew(nn.Module):
+    def forward(self, x):
+        return torch.relu(x)
+""",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(app, ["check", str(generated_path)])
+
+    assert result.exit_code == 1
+    check_result = json.loads(result.output)
+    assert check_result["ok"] is False
+    assert check_result["errors"]
 
 
 def write_problem(kernelbench_dir: Path, source: str = "class Model:\n    pass\n") -> Path:

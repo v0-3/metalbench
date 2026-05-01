@@ -6,7 +6,7 @@ from typing import Annotated, TypeVar
 import typer
 
 from metalbench import env as env_module
-from metalbench import kernelbench_adapter
+from metalbench import kernelbench_adapter, static_check
 from metalbench.types import KBProblem
 
 T = TypeVar("T")
@@ -48,6 +48,19 @@ def show_environment(
             raise typer.Exit(1) from error
 
     typer.echo(json.dumps(env_module.describe_environment(), indent=2))
+
+
+@app.command("check")
+def check_generated_kernel(path: Path) -> None:
+    try:
+        result = static_check.check_generated_metal_kernel(path)
+    except (FileNotFoundError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
+
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2))
+    if not result.ok:
+        raise typer.Exit(1)
 
 
 @kb_app.command("list")

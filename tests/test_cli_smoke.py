@@ -346,6 +346,64 @@ def test_cli_eval_run_passes_options_to_evaluate_run_directory(
     ]
 
 
+def test_cli_generate_request_writes_prompt_and_metadata(tmp_path: Path) -> None:
+    kernelbench_dir = tmp_path / "KernelBench"
+    source = "import torch\n\nclass Model:\n    pass\n"
+    write_problem(kernelbench_dir, source)
+    run_dir = tmp_path / "run"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate-request",
+            "--kernelbench-dir",
+            str(kernelbench_dir),
+            "--level",
+            "1",
+            "--problem-id",
+            "19",
+            "--run-dir",
+            str(run_dir),
+            "--sample-id",
+            "2",
+        ],
+    )
+
+    assert result.exit_code == 0
+    artifact = json.loads(result.output)
+    assert artifact["run_name"] == "run"
+    assert artifact["level"] == 1
+    assert artifact["problem_id"] == 19
+    assert artifact["sample_id"] == 2
+    assert artifact["prompt_path"] == str(run_dir / "level_1_problem_19_sample_2_prompt.md")
+    assert artifact["metadata_path"] == str(run_dir / "level_1_problem_19_sample_2_metadata.json")
+    assert artifact["kernel_path"] == str(run_dir / "level_1_problem_19_sample_2_kernel.py")
+    assert Path(artifact["prompt_path"]).is_file()
+    assert Path(artifact["metadata_path"]).is_file()
+
+
+def test_cli_generate_request_missing_kernelbench_dir_exits_with_error(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate-request",
+            "--kernelbench-dir",
+            str(tmp_path / "missing"),
+            "--level",
+            "1",
+            "--problem-id",
+            "19",
+            "--run-dir",
+            str(tmp_path / "run"),
+            "--sample-id",
+            "0",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "KernelBench directory not found" in result.output
+
+
 def test_cli_analyze_emits_json(tmp_path: Path) -> None:
     ref_path = tmp_path / "reference.py"
     kernel_path = tmp_path / "kernel.py"

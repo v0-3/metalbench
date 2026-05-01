@@ -6,7 +6,14 @@ from typing import Annotated, TypeVar
 import typer
 
 import metalbench.env as env_module
-from metalbench import analysis, eval_batch, eval_one, kernelbench_adapter, static_check
+from metalbench import (
+    analysis,
+    eval_batch,
+    eval_one,
+    generation_contract,
+    kernelbench_adapter,
+    static_check,
+)
 from metalbench.types import KBProblem
 
 T = TypeVar("T")
@@ -61,6 +68,54 @@ def check_generated_kernel(path: Path) -> None:
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2))
     if not result.ok:
         raise typer.Exit(1)
+
+
+@app.command("generate-request")
+def generate_request(
+    kernelbench_dir: Annotated[
+        Path,
+        typer.Option(
+            "--kernelbench-dir",
+            help="Project-root KernelBench problem directory.",
+        ),
+    ] = Path("KernelBench"),
+    level: Annotated[
+        int,
+        typer.Option(
+            "--level",
+            help="KernelBench problem level.",
+        ),
+    ] = 1,
+    problem_id: Annotated[
+        int,
+        typer.Option(
+            "--problem-id",
+            help="KernelBench problem id.",
+        ),
+    ] = 19,
+    run_dir: Annotated[
+        Path,
+        typer.Option(
+            "--run-dir",
+            help="Directory where generation request files will be written.",
+        ),
+    ] = Path("runs/default"),
+    sample_id: Annotated[
+        int,
+        typer.Option(
+            "--sample-id",
+            help="Sample id for generated request filenames.",
+        ),
+    ] = 0,
+) -> None:
+    try:
+        problem = kernelbench_adapter.load_problem(level, problem_id, kernelbench_dir)
+    except (FileNotFoundError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
+
+    artifact = generation_contract.write_generation_request(problem, run_dir, sample_id)
+    typer.echo(json.dumps(artifact.model_dump(mode="json"), indent=2))
 
 
 @app.command("eval-one")

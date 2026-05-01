@@ -5,8 +5,13 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+import metalbench.cli
 import metalbench.env
 from metalbench.cli import app
+from metalbench.correctness import CorrectnessResult
+from metalbench.eval_one import EvalOneResult
+from metalbench.static_check import StaticCheckResult
+from metalbench.timing import TimingResult
 
 
 def test_cli_help_exits_successfully() -> None:
@@ -86,6 +91,144 @@ class ModelNew(nn.Module):
     check_result = json.loads(result.output)
     assert check_result["ok"] is False
     assert check_result["errors"]
+
+
+def eval_one_result(ref_path: Path, kernel_path: Path) -> EvalOneResult:
+    return EvalOneResult(
+        run_name="run",
+        level=1,
+        problem_id=19,
+        sample_id=0,
+        ref_path=ref_path,
+        kernel_path=kernel_path,
+        static_check=StaticCheckResult(
+            path=kernel_path,
+            ok=True,
+            errors=[],
+            warnings=[],
+            uses_compile_shader=True,
+            uses_load_metallib=False,
+            found_metal_kernel_source=True,
+        ),
+        correctness=CorrectnessResult(ok=True, trials=1, passed=1, failed=0, errors=[]),
+        generated_timing=TimingResult(
+            ok=True,
+            device="mps",
+            median_ms=2.0,
+            mean_ms=2.0,
+            min_ms=2.0,
+            max_ms=2.0,
+            p25_ms=2.0,
+            p75_ms=2.0,
+            warmup=1,
+            trials=1,
+            errors=[],
+        ),
+        mps_baseline_timing=TimingResult(
+            ok=True,
+            device="mps",
+            median_ms=5.0,
+            mean_ms=5.0,
+            min_ms=5.0,
+            max_ms=5.0,
+            p25_ms=5.0,
+            p75_ms=5.0,
+            warmup=1,
+            trials=1,
+            errors=[],
+        ),
+        speedup_vs_mps=2.5,
+        metal_fast_0=True,
+        metal_fast_1=True,
+        metal_fast_2=True,
+        errors=[],
+    )
+
+
+def test_cli_eval_one_emits_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ref_path = tmp_path / "reference.py"
+    kernel_path = tmp_path / "kernel.py"
+    monkeypatch.setattr(
+        metalbench.cli.eval_one,
+        "evaluate_one",
+        lambda *args, **kwargs: eval_one_result(ref_path, kernel_path),
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-one",
+            "--ref-path",
+            str(ref_path),
+            "--kernel-path",
+            str(kernel_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    eval_result = json.loads(result.output)
+    assert eval_result["ref_path"] == str(ref_path)
+    assert eval_result["kernel_path"] == str(kernel_path)
+    assert eval_result["speedup_vs_mps"] == 2.5
+    assert eval_result["metal_fast_2"] is True
+
+
+def test_cli_eval_one_output_writes_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ref_path = tmp_path / "reference.py"
+    kernel_path = tmp_path / "kernel.py"
+    output_path = tmp_path / "result.json"
+    monkeypatch.setattr(
+        metalbench.cli.eval_one,
+        "evaluate_one",
+        lambda *args, **kwargs: eval_one_result(ref_path, kernel_path),
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-one",
+            "--ref-path",
+            str(ref_path),
+            "--kernel-path",
+            str(kernel_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == ""
+    eval_result = json.loads(output_path.read_text(encoding="utf-8"))
+    assert eval_result["ref_path"] == str(ref_path)
+    assert eval_result["speedup_vs_mps"] == 2.5
+
+
+def test_cli_eval_one_require_mps_exits_with_error_when_mps_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(metalbench.env, "is_mps_available", lambda: False)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-one",
+            "--ref-path",
+            str(tmp_path / "reference.py"),
+            "--kernel-path",
+            str(tmp_path / "kernel.py"),
+            "--require-mps",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "MPS" in result.output
 
 
 def write_problem(kernelbench_dir: Path, source: str = "class Model:\n    pass\n") -> Path:

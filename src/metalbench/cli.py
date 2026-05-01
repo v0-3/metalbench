@@ -5,8 +5,8 @@ from typing import Annotated, TypeVar
 
 import typer
 
-from metalbench import env as env_module
-from metalbench import kernelbench_adapter, static_check
+import metalbench.env as env_module
+from metalbench import eval_one, kernelbench_adapter, static_check
 from metalbench.types import KBProblem
 
 T = TypeVar("T")
@@ -61,6 +61,129 @@ def check_generated_kernel(path: Path) -> None:
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2))
     if not result.ok:
         raise typer.Exit(1)
+
+
+@app.command("eval-one")
+def evaluate_one_kernel(
+    ref_path: Annotated[
+        Path,
+        typer.Option(
+            "--ref-path",
+            help="Reference KernelBench problem path.",
+        ),
+    ],
+    kernel_path: Annotated[
+        Path,
+        typer.Option(
+            "--kernel-path",
+            help="Generated Metal kernel path.",
+        ),
+    ],
+    run_name: Annotated[
+        str | None,
+        typer.Option(
+            "--run-name",
+            help="Optional run name to include in JSON output.",
+        ),
+    ] = None,
+    level: Annotated[
+        int | None,
+        typer.Option(
+            "--level",
+            help="Optional KernelBench level to include in JSON output.",
+        ),
+    ] = None,
+    problem_id: Annotated[
+        int | None,
+        typer.Option(
+            "--problem-id",
+            help="Optional KernelBench problem id to include in JSON output.",
+        ),
+    ] = None,
+    sample_id: Annotated[
+        int | None,
+        typer.Option(
+            "--sample-id",
+            help="Optional sample id to include in JSON output.",
+        ),
+    ] = None,
+    correctness_trials: Annotated[
+        int,
+        typer.Option(
+            "--correctness-trials",
+            help="Correctness trials to run after static checks pass.",
+        ),
+    ] = 5,
+    perf_trials: Annotated[
+        int,
+        typer.Option(
+            "--perf-trials",
+            help="Timing trials to run after correctness passes.",
+        ),
+    ] = 100,
+    warmup: Annotated[
+        int,
+        typer.Option(
+            "--warmup",
+            help="Timing warmup iterations.",
+        ),
+    ] = 10,
+    rtol: Annotated[
+        float,
+        typer.Option(
+            "--rtol",
+            help="Relative tolerance for correctness checks.",
+        ),
+    ] = 1e-4,
+    atol: Annotated[
+        float,
+        typer.Option(
+            "--atol",
+            help="Absolute tolerance for correctness checks.",
+        ),
+    ] = 1e-4,
+    require_mps: Annotated[
+        bool,
+        typer.Option(
+            "--require-mps",
+            help="Exit with an error when Apple Metal MPS is unavailable.",
+        ),
+    ] = False,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            help="Optional JSON output path.",
+        ),
+    ] = None,
+) -> None:
+    if require_mps:
+        try:
+            env_module.require_mps()
+        except RuntimeError as error:
+            typer.echo(str(error), err=True)
+            raise typer.Exit(1) from error
+
+    result = eval_one.evaluate_one(
+        ref_path,
+        kernel_path,
+        run_name=run_name,
+        level=level,
+        problem_id=problem_id,
+        sample_id=sample_id,
+        correctness_trials=correctness_trials,
+        perf_trials=perf_trials,
+        warmup=warmup,
+        rtol=rtol,
+        atol=atol,
+        require_mps=require_mps,
+    )
+    result_json = json.dumps(result.model_dump(mode="json"), indent=2)
+    if output is None:
+        typer.echo(result_json)
+        return
+
+    output.write_text(f"{result_json}\n", encoding="utf-8")
 
 
 @kb_app.command("list")

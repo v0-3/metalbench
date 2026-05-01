@@ -6,7 +6,7 @@ from typing import Annotated, TypeVar
 import typer
 
 import metalbench.env as env_module
-from metalbench import eval_one, kernelbench_adapter, static_check
+from metalbench import eval_batch, eval_one, kernelbench_adapter, static_check
 from metalbench.types import KBProblem
 
 T = TypeVar("T")
@@ -183,6 +183,77 @@ def evaluate_one_kernel(
         typer.echo(result_json)
         return
 
+    output.write_text(f"{result_json}\n", encoding="utf-8")
+
+
+@app.command("eval-run")
+def evaluate_run_directory(
+    run_dir: Annotated[
+        Path,
+        typer.Option(
+            "--run-dir",
+            help="Run directory containing generated kernel files.",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "--output",
+            help="Required JSON output path.",
+        ),
+    ],
+    kernelbench_dir: Annotated[
+        Path,
+        typer.Option(
+            "--kernelbench-dir",
+            help="Project-root KernelBench problem directory.",
+        ),
+    ] = Path("KernelBench"),
+    correctness_trials: Annotated[
+        int,
+        typer.Option(
+            "--correctness-trials",
+            help="Correctness trials to run after static checks pass.",
+        ),
+    ] = 5,
+    perf_trials: Annotated[
+        int,
+        typer.Option(
+            "--perf-trials",
+            help="Timing trials to run after correctness passes.",
+        ),
+    ] = 100,
+    warmup: Annotated[
+        int,
+        typer.Option(
+            "--warmup",
+            help="Timing warmup iterations.",
+        ),
+    ] = 10,
+    require_mps: Annotated[
+        bool,
+        typer.Option(
+            "--require-mps",
+            help="Exit with an error when Apple Metal MPS is unavailable.",
+        ),
+    ] = False,
+) -> None:
+    if require_mps:
+        try:
+            env_module.require_mps()
+        except RuntimeError as error:
+            typer.echo(str(error), err=True)
+            raise typer.Exit(1) from error
+
+    results = eval_batch.evaluate_run_directory(
+        run_dir,
+        kernelbench_dir,
+        correctness_trials=correctness_trials,
+        perf_trials=perf_trials,
+        warmup=warmup,
+        require_mps=require_mps,
+    )
+    result_json = json.dumps([result.model_dump(mode="json") for result in results], indent=2)
     output.write_text(f"{result_json}\n", encoding="utf-8")
 
 

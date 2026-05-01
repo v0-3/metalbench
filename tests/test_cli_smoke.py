@@ -231,6 +231,121 @@ def test_cli_eval_one_require_mps_exits_with_error_when_mps_is_unavailable(
     assert "MPS" in result.output
 
 
+def test_cli_eval_run_output_writes_json_list(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ref_path = tmp_path / "reference.py"
+    kernel_path = tmp_path / "level_1_problem_19_sample_0_kernel.py"
+    output_path = tmp_path / "results.json"
+    monkeypatch.setattr(
+        metalbench.cli.eval_batch,
+        "evaluate_run_directory",
+        lambda *args, **kwargs: [eval_one_result(ref_path, kernel_path)],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-run",
+            "--run-dir",
+            str(tmp_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == ""
+    eval_results = json.loads(output_path.read_text(encoding="utf-8"))
+    assert isinstance(eval_results, list)
+    assert eval_results[0]["ref_path"] == str(ref_path)
+    assert eval_results[0]["kernel_path"] == str(kernel_path)
+
+
+def test_cli_eval_run_require_mps_exits_with_error_when_mps_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(metalbench.env, "is_mps_available", lambda: False)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-run",
+            "--run-dir",
+            str(tmp_path),
+            "--output",
+            str(tmp_path / "results.json"),
+            "--require-mps",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "MPS" in result.output
+
+
+def test_cli_eval_run_passes_options_to_evaluate_run_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "results.json"
+    kernelbench_dir = tmp_path / "KernelBench"
+    calls: list[dict[str, object]] = []
+
+    def fake_evaluate_run_directory(
+        run_dir: Path,
+        kernelbench_dir: Path,
+        **kwargs: object,
+    ) -> list[EvalOneResult]:
+        calls.append(
+            {
+                "run_dir": run_dir,
+                "kernelbench_dir": kernelbench_dir,
+                **kwargs,
+            }
+        )
+        return []
+
+    monkeypatch.setattr(
+        metalbench.cli.eval_batch,
+        "evaluate_run_directory",
+        fake_evaluate_run_directory,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval-run",
+            "--run-dir",
+            str(tmp_path),
+            "--kernelbench-dir",
+            str(kernelbench_dir),
+            "--correctness-trials",
+            "7",
+            "--perf-trials",
+            "11",
+            "--warmup",
+            "13",
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(output_path.read_text(encoding="utf-8")) == []
+    assert calls == [
+        {
+            "run_dir": tmp_path,
+            "kernelbench_dir": kernelbench_dir,
+            "correctness_trials": 7,
+            "perf_trials": 11,
+            "warmup": 13,
+            "require_mps": False,
+        }
+    ]
+
+
 def write_problem(kernelbench_dir: Path, source: str = "class Model:\n    pass\n") -> Path:
     level_dir = kernelbench_dir / "level1"
     level_dir.mkdir(parents=True)

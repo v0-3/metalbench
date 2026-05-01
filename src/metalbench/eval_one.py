@@ -13,7 +13,7 @@ class EvalOneResult(BaseModel):
     level: int | None
     problem_id: int | None
     sample_id: int | None
-    ref_path: Path
+    ref_path: Path | None
     kernel_path: Path
     static_check: StaticCheckResult
     correctness: CorrectnessResult | None
